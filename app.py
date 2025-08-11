@@ -21,6 +21,7 @@ import config
 from data_handler import StockDataHandler
 from inference import RealTimePredictor
 from model import StockPredictionTransformer
+from llm_advisor import LLMTradingAdvisor
 
 
 class StockPredictionApp:
@@ -30,6 +31,7 @@ class StockPredictionApp:
     def __init__(self):
         self.data_handler = StockDataHandler()
         self.predictor = None
+        self.llm_advisor = LLMTradingAdvisor()
         self.prediction_queue = queue.Queue()
         self.is_running = False
         self.prediction_thread = None
@@ -41,6 +43,8 @@ class StockPredictionApp:
             st.session_state.market_data = None
         if 'analytics_data' not in st.session_state:
             st.session_state.analytics_data = {}
+        if 'chat_history' not in st.session_state:
+            st.session_state.chat_history = []
         
         # 初期化
         self.initialize_predictor()
@@ -342,6 +346,13 @@ def main():
         else:
             st.error("❌ モデル未読み込み")
         
+        # LLM Advisor status
+        if app.llm_advisor.is_available():
+            st.success("✅ AI投資アドバイザー利用可能")
+        else:
+            st.warning("⚠️ AI投資アドバイザー無効")
+            st.caption("APIキーを設定してください")
+        
         # 最新予測情報
         if st.session_state.prediction_history:
             latest = st.session_state.prediction_history[-1]
@@ -447,6 +458,152 @@ def main():
         display_df['信頼度'] = display_df['信頼度'].apply(lambda x: f"{x:.2f}")
         
         st.dataframe(display_df, use_container_width=True)
+    
+    # LLM投資アドバイザー
+    st.markdown("---")
+    st.subheader("🤖 AI投資アドバイザー")
+    
+    # LLM advisor status
+    if app.llm_advisor.is_available():
+        st.success("✅ ChatGPT投資アドバイザー利用可能")
+        
+        # Create tabs for different advisor functions
+        advisor_tab1, advisor_tab2, advisor_tab3 = st.tabs(["💬 質問・相談", "⚡ クイック分析", "📜 アドバイス履歴"])
+        
+        with advisor_tab1:
+            st.markdown("**投資に関する質問や相談をお気軽にどうぞ**")
+            
+            # Chat interface
+            user_question = st.text_area(
+                "質問を入力してください:",
+                placeholder="例: 現在のトヨタ株の投資判断について教えてください",
+                height=100
+            )
+            
+            col_ask1, col_ask2 = st.columns([1, 4])
+            with col_ask1:
+                ask_button = st.button("🎯 質問する", type="primary")
+            with col_ask2:
+                include_context = st.checkbox("予測履歴・市場データを含める", value=True)
+            
+            if ask_button and user_question.strip():
+                with st.spinner("アドバイザーが分析中..."):
+                    # Get latest market data
+                    market_data = {}
+                    if st.session_state.prediction_history:
+                        latest_pred = st.session_state.prediction_history[-1]
+                        market_data = {
+                            'current_price': latest_pred.get('current_price', 0),
+                            'price_change_pct': latest_pred.get('price_change_pct', 0),
+                            'volume': latest_pred.get('volume', 0) if 'volume' in latest_pred else None,
+                            'market_trend': latest_pred.get('signal', 'HOLD')
+                        }
+                    
+                    advice = app.llm_advisor.get_investment_advice(
+                        user_question=user_question.strip(),
+                        prediction_history=st.session_state.prediction_history if include_context else [],
+                        market_data=market_data if include_context else {}
+                    )
+                    
+                    if advice:
+                        # Add to chat history
+                        st.session_state.chat_history.append({
+                            'timestamp': datetime.now().isoformat(),
+                            'question': user_question.strip(),
+                            'answer': advice,
+                            'type': 'user_question'
+                        })
+                        
+                        st.success("✅ アドバイス完了")
+                        st.rerun()
+            
+            # Display recent chat history
+            if st.session_state.chat_history:
+                st.markdown("---")
+                st.markdown("**最近の質問・回答**")
+                
+                for i, chat in enumerate(reversed(st.session_state.chat_history[-5:])):
+                    with st.expander(f"Q: {chat['question'][:50]}..." if len(chat['question']) > 50 else f"Q: {chat['question']}", expanded=(i==0)):
+                        st.markdown(f"**質問時刻:** {pd.to_datetime(chat['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+                        st.markdown(f"**質問:** {chat['question']}")
+                        st.markdown(f"**回答:**\n\n{chat['answer']}")
+        
+        with advisor_tab2:
+            st.markdown("**現在の市場状況の簡潔な分析**")
+            
+            if st.button("⚡ クイック分析実行", type="primary"):
+                with st.spinner("市場分析中..."):
+                    # Get latest prediction and market data
+                    latest_pred = st.session_state.prediction_history[-1] if st.session_state.prediction_history else {}
+                    market_data = {}
+                    
+                    if latest_pred:
+                        market_data = {
+                            'current_price': latest_pred.get('current_price', 0),
+                            'price_change_pct': latest_pred.get('price_change_pct', 0),
+                            'volume': latest_pred.get('volume', 0) if 'volume' in latest_pred else None,
+                            'market_trend': latest_pred.get('signal', 'HOLD'),
+                            'confidence': latest_pred.get('confidence', 0)
+                        }
+                    
+                    analysis = app.llm_advisor.get_quick_analysis(latest_pred, market_data)
+                    
+                    if analysis:
+                        # Add to chat history
+                        st.session_state.chat_history.append({
+                            'timestamp': datetime.now().isoformat(),
+                            'question': 'クイック市場分析',
+                            'answer': analysis,
+                            'type': 'quick_analysis'
+                        })
+                        
+                        st.success("✅ 分析完了")
+                        st.rerun()
+            
+            # Show latest quick analysis
+            quick_analyses = [chat for chat in st.session_state.chat_history if chat.get('type') == 'quick_analysis']
+            if quick_analyses:
+                latest_analysis = quick_analyses[-1]
+                st.markdown("---")
+                st.markdown("**最新の市場分析**")
+                st.info(latest_analysis['answer'])
+                st.caption(f"分析時刻: {pd.to_datetime(latest_analysis['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        with advisor_tab3:
+            st.markdown("**過去のアドバイス履歴**")
+            
+            if st.session_state.chat_history:
+                for i, chat in enumerate(reversed(st.session_state.chat_history)):
+                    chat_type = "🔍 クイック分析" if chat.get('type') == 'quick_analysis' else "💬 質問・回答"
+                    
+                    with st.expander(f"{chat_type}: {chat['question'][:60]}..." if len(chat['question']) > 60 else f"{chat_type}: {chat['question']}"):
+                        st.markdown(f"**時刻:** {pd.to_datetime(chat['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+                        st.markdown(f"**内容:** {chat['question']}")
+                        st.markdown(f"**回答:**\n\n{chat['answer']}")
+                
+                # Clear history button
+                if st.button("🗑️ 履歴をクリア"):
+                    st.session_state.chat_history = []
+                    st.success("履歴をクリアしました")
+                    st.rerun()
+            else:
+                st.info("まだアドバイス履歴がありません。上記のタブで質問やクイック分析をお試しください。")
+    
+    else:
+        st.warning("⚠️ ChatGPT投資アドバイザーが利用できません")
+        st.info("**利用方法:**\n1. OpenAIのAPIキーを取得\n2. 環境変数 `OPENAI_API_KEY` を設定\n3. アプリケーションを再起動")
+        
+        # Show demo interface (disabled)
+        st.markdown("---")
+        st.markdown("**プレビュー（利用には API キーが必要）**")
+        
+        demo_question = st.text_area(
+            "質問例:",
+            value="現在のトヨタ株の投資判断について、テクニカル分析の観点から教えてください。",
+            disabled=True,
+            height=80
+        )
+        st.button("🎯 質問する（要APIキー）", disabled=True)
     
     # 自動更新
     if auto_refresh:
