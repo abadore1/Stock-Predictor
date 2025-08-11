@@ -21,6 +21,8 @@ import config
 from data_handler import StockDataHandler
 from inference import RealTimePredictor
 from model import StockPredictionTransformer
+from technical_indicators import TechnicalIndicators
+from visualize import ModelVisualizer
 
 
 class StockPredictionApp:
@@ -33,6 +35,8 @@ class StockPredictionApp:
         self.prediction_queue = queue.Queue()
         self.is_running = False
         self.prediction_thread = None
+        self.technical_indicators = TechnicalIndicators()
+        self.visualizer = ModelVisualizer()
         
         # アプリケーション状態
         if 'prediction_history' not in st.session_state:
@@ -41,6 +45,8 @@ class StockPredictionApp:
             st.session_state.market_data = None
         if 'analytics_data' not in st.session_state:
             st.session_state.analytics_data = {}
+        if 'technical_data' not in st.session_state:
+            st.session_state.technical_data = None
         
         # 初期化
         self.initialize_predictor()
@@ -427,6 +433,112 @@ def main():
         analytics_chart = app.create_analytics_chart(analytics)
         if analytics_chart.data:
             st.plotly_chart(analytics_chart, use_container_width=True)
+    
+    # テクニカル指標セクション
+    st.markdown("---")
+    st.subheader("📈 テクニカル指標分析")
+    
+    # テクニカル指標の設定
+    col_tech1, col_tech2 = st.columns([3, 1])
+    
+    with col_tech2:
+        st.markdown("##### 指標設定")
+        
+        # 指標の表示/非表示切り替え
+        show_bollinger = st.checkbox("ボリンジャーバンド", value=True)
+        show_ichimoku = st.checkbox("一目均衡表", value=True)
+        show_rsi = st.checkbox("RSI", value=True)
+        show_macd = st.checkbox("MACD", value=True)
+        show_stochastic = st.checkbox("ストキャスティクス", value=True)
+        show_signals = st.checkbox("売買シグナル", value=True)
+        
+        # 個別指標表示
+        individual_indicator = st.selectbox(
+            "個別表示",
+            options=["なし", "RSI", "MACD", "ボリンジャーバンド"],
+            index=0
+        )
+    
+    with col_tech1:
+        try:
+            # 市場データを取得
+            market_data = app.get_market_data_for_chart(display_period)
+            if not market_data.empty:
+                # テクニカル指標を計算
+                tech_data = app.technical_indicators.calculate_all_indicators(market_data)
+                tech_signals = app.technical_indicators.generate_signals(tech_data)
+                
+                # セッション状態に保存
+                st.session_state.technical_data = tech_signals
+                
+                # 全体チャートまたは個別チャートを表示
+                if individual_indicator == "なし":
+                    # 全テクニカル指標チャートを表示
+                    tech_chart = app.visualizer.plot_technical_indicators(market_data)
+                    st.plotly_chart(tech_chart, use_container_width=True)
+                else:
+                    # 個別指標チャートを表示
+                    individual_chart = app.visualizer.plot_individual_indicator(
+                        market_data, individual_indicator.lower()
+                    )
+                    st.plotly_chart(individual_chart, use_container_width=True)
+                
+                # 現在のシグナル状況を表示
+                if show_signals:
+                    st.markdown("##### 📊 現在のシグナル状況")
+                    signals_summary = app.technical_indicators.get_signal_summary(tech_signals)
+                    
+                    if signals_summary:
+                        signal_cols = st.columns(len(signals_summary))
+                        for i, (indicator, signal) in enumerate(signals_summary.items()):
+                            with signal_cols[i]:
+                                # シグナルに応じて色を変更
+                                if signal == "BUY":
+                                    st.success(f"**{indicator}**\n\n🟢 {signal}")
+                                elif signal == "SELL":
+                                    st.error(f"**{indicator}**\n\n🔴 {signal}")
+                                else:
+                                    st.info(f"**{indicator}**\n\n⚫ {signal}")
+                
+                # 最新の指標値を表示
+                if not tech_signals.empty:
+                    latest_tech = tech_signals.iloc[-1]
+                    st.markdown("##### 📋 最新指標値")
+                    
+                    tech_col1, tech_col2, tech_col3 = st.columns(3)
+                    
+                    with tech_col1:
+                        st.metric("RSI", f"{latest_tech['rsi']:.1f}", 
+                                help="70以上: 売られすぎ, 30以下: 買われすぎ")
+                        st.metric("MACD", f"{latest_tech['macd']:.4f}")
+                    
+                    with tech_col2:
+                        st.metric("Stochastic %K", f"{latest_tech['stoch_k']:.1f}")
+                        st.metric("Stochastic %D", f"{latest_tech['stoch_d']:.1f}")
+                    
+                    with tech_col3:
+                        st.metric("BB Position", 
+                                f"{((latest_tech['Close'] - latest_tech['bb_lower']) / (latest_tech['bb_upper'] - latest_tech['bb_lower']) * 100):.1f}%",
+                                help="0%: 下限, 100%: 上限")
+                        
+                        # 一目均衡表のクラウド状況
+                        cloud_top = max(latest_tech['ichimoku_senkou_a'], latest_tech['ichimoku_senkou_b'])
+                        cloud_bottom = min(latest_tech['ichimoku_senkou_a'], latest_tech['ichimoku_senkou_b'])
+                        
+                        if pd.notna(cloud_top) and pd.notna(cloud_bottom):
+                            if latest_tech['Close'] > cloud_top:
+                                cloud_status = "雲の上 ☁️⬆️"
+                            elif latest_tech['Close'] < cloud_bottom:
+                                cloud_status = "雲の下 ☁️⬇️"
+                            else:
+                                cloud_status = "雲の中 ☁️"
+                            st.metric("一目雲", cloud_status)
+                        
+            else:
+                st.warning("テクニカル指標用のデータを取得できませんでした")
+                
+        except Exception as e:
+            st.error(f"テクニカル指標の表示に失敗しました: {e}")
     
     # 予測履歴テーブル
     if st.session_state.prediction_history:
