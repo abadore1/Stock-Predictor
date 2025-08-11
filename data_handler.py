@@ -1,6 +1,6 @@
 """
 Data acquisition and preprocessing module for stock prediction AI
-Handles yfinance data download, cleaning, and preparation
+Handles yfinance data download, cleaning, and preparation with data quality monitoring
 """
 
 import yfinance as yf
@@ -13,6 +13,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import config
+from data_quality import DataQualityMonitor, DataQualityMetrics
 
 
 class StockDataHandler:
@@ -22,6 +23,10 @@ class StockDataHandler:
         self.target_data = None
         self.market_data = None
         self.combined_data = None
+        
+        # Initialize data quality monitoring
+        self.quality_monitor = DataQualityMonitor()
+        self.quality_metrics = None
         
     def download_stock_data(self, symbol: str, period: str = config.DATA_PERIOD, 
                            interval: str = config.DATA_INTERVAL) -> pd.DataFrame:
@@ -49,18 +54,37 @@ class StockDataHandler:
     
     def clean_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Clean stock data by handling missing values and outliers
+        Clean stock data by handling missing values and outliers with quality monitoring
         """
-        # Remove rows with any NaN values
+        # First pass: basic cleaning
         data_clean = data.dropna()
         
         # Check for obvious data errors (negative prices, zero volume)
         data_clean = data_clean[data_clean['Close'] > 0]
         data_clean = data_clean[data_clean['Volume'] >= 0]
         
-        # Remove extreme outliers (price changes > 20% in 5 minutes)
-        price_change = data_clean['Close'].pct_change().abs()
-        data_clean = data_clean[price_change <= 0.2]
+        # Monitor data quality before outlier removal
+        if len(data_clean) > 0:
+            self.quality_metrics, alerts = self.quality_monitor.monitor_data_quality(data_clean)
+            
+            # Print quality alerts if any
+            if alerts:
+                print(f"Data Quality Alerts ({len(alerts)}):")
+                for alert in alerts:
+                    print(f"  {alert.level.value.upper()}: {alert.message}")
+        
+        # Use quality monitor's outlier detection instead of simple threshold
+        outlier_results = self.quality_monitor.outlier_detector.detect_outliers(
+            data_clean, config.FEATURE_COLUMNS
+        )
+        
+        # Remove rows that have outliers in critical features (Close price)
+        if 'Close_outlier' in outlier_results.columns:
+            outlier_mask = outlier_results['Close_outlier']
+            data_clean = data_clean[~outlier_mask]
+            outlier_count = outlier_mask.sum()
+            if outlier_count > 0:
+                print(f"Removed {outlier_count} outlier records based on Close price")
         
         return data_clean
     
@@ -186,7 +210,7 @@ class StockDataHandler:
     
     def get_latest_data(self) -> pd.DataFrame:
         """
-        Get the most recent data for real-time inference
+        Get the most recent data for real-time inference with quality monitoring
         """
         print("Fetching latest data for inference...")
         
@@ -208,7 +232,37 @@ class StockDataHandler:
         # Align data
         latest_data = self.align_data(target_normalized, market_normalized)
         
+        # Perform final quality check
+        if len(latest_data) > 0:
+            quality_summary = self.quality_monitor.get_quality_summary(latest_data)
+            print(f"Latest data quality score: {quality_summary['metrics']['quality_score']:.3f}")
+            if quality_summary['status'] != 'healthy':
+                print(f"Data quality status: {quality_summary['status']}")
+        
         return latest_data
+    
+    def get_data_quality_report(self) -> Dict:
+        """
+        Get comprehensive data quality report
+        """
+        if self.combined_data is not None:
+            return self.quality_monitor.get_quality_summary(self.combined_data)
+        else:
+            return {"error": "No data available for quality assessment"}
+    
+    def is_data_healthy(self, threshold: float = 0.7) -> bool:
+        """
+        Check if current data quality meets health threshold
+        
+        Args:
+            threshold: Minimum quality score (0-1) to consider data healthy
+            
+        Returns:
+            True if data quality is above threshold
+        """
+        if self.quality_metrics is None:
+            return False
+        return self.quality_metrics.quality_score >= threshold
 
 
 def main():
