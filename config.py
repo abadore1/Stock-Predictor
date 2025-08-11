@@ -48,3 +48,12 @@ DEVICE = "cpu"  # Will be updated to "cuda" if available
 BACKTEST_INITIAL_CAPITAL = 1000000  # 100万円
 TRANSACTION_COST = 0.001  # 0.1% transaction cost
 SIGNAL_THRESHOLD = 0.005  # 0.5% price change threshold for buy/sell signals
+
+# LLM Advisor parameters
+LLM_MODEL = "gpt-3.5-turbo"  # OpenAI model to use
+LLM_MAX_TOKENS = 500  # Maximum tokens for response
+LLM_TEMPERATURE = 0.7  # Creativity level (0.0 to 1.0)
+LLM_RATE_LIMIT_DELAY = 1.0  # Seconds between API calls to avoid rate limiting
+LLM_MAX_RETRIES = 3  # Maximum retry attempts for API calls
+LLM_HISTORY_LIMIT = 20  # Number of recent predictions to include in context
+ADVISORY_HISTORY_LIMIT = 50  # Maximum stored advisory messages
