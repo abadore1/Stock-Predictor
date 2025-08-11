@@ -16,6 +16,10 @@ An AI stock prediction system using Transformer architecture with Grouped-Query 
 - **可視化ダッシュボード**: 詳細な結果分析とチャート
 - **📱 Webアプリ**: Streamlitベースの使いやすいUI
 - **🔧 拡張可能**: 設定変更で他の銘柄にも対応
+- **🔍 データ品質監視**: 統計的外れ値検知とデータドリフト検出
+- **📊 不確実性定量化**: Monte Carlo Dropoutによる予測信頼区間
+- **⚠️ アラートシステム**: データ品質低下時の自動警告
+- **📈 信頼性評価**: 予測の信頼性スコアと品質メトリクス
 
 ## プロジェクト構造 (Project Structure)
 
@@ -32,11 +36,15 @@ Stock prediction/
 ├── train.py                 # モデル学習
 ├── evaluate.py              # モデル評価・バックテスト
 ├── inference.py             # リアルタイム推論
+├── enhanced_inference.py    # 🔍 強化推論（不確実性定量化）
+├── data_quality.py          # 📊 データ品質監視システム
 ├── visualize.py             # 結果可視化
+├── test_data_quality.py     # テストスイート
 ├── data/                    # 処理済みデータ
 ├── models/                  # 学習済みモデル
 ├── checkpoints/             # 学習チェックポイント
-└── results/                 # 結果・ログ
+├── results/                 # 結果・ログ
+└── alerts/                  # ⚠️ データ品質アラート
 ```
 
 ## セットアップ (Setup)
@@ -77,6 +85,20 @@ http://localhost:8501 でアクセス
 #### 完全パイプライン
 ```bash
 python main.py  # 選択肢 1
+```
+
+#### データ品質チェック
+```bash
+python main.py  # 選択肢 8
+# または直接実行
+python test_data_quality.py
+```
+
+#### 強化推論（不確実性定量化付き）
+```bash
+python main.py  # 選択肢 7
+# または直接実行
+python enhanced_inference.py
 ```
 
 #### 個別コンポーネント実行
@@ -141,6 +163,18 @@ python visualize.py
 - **シャープ比**: リスク調整後リターン
 - **最大ドローダウン**: 最大損失期間
 - **勝率**: 利益取引の割合
+
+### データ品質メトリクス
+- **品質スコア**: 総合的なデータ品質（0-1）
+- **欠損値率**: データの欠損比率
+- **外れ値率**: 統計的外れ値の比率
+- **ドリフトスコア**: データ分布の変化度合い
+- **完全性スコア**: データの完全性評価
+
+### 予測信頼性
+- **不確実性**: Monte Carlo Dropoutによる予測分散
+- **信頼区間**: 予測の95%信頼区間
+- **信頼性スコア**: データ品質と不確実性を統合した信頼度
 
 ## 設定のカスタマイズ (Configuration)
 

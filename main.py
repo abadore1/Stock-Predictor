@@ -104,6 +104,71 @@ def run_inference():
         return False
 
 
+def run_enhanced_inference():
+    """Run enhanced inference with uncertainty quantification and data quality monitoring"""
+    model_path = os.path.join(config.MODEL_SAVE_PATH, "best_model.pth")
+    
+    if not os.path.exists(model_path):
+        print("Trained model not found. Please complete training first.")
+        return False
+    
+    from enhanced_inference import main as enhanced_inference_main
+    try:
+        enhanced_inference_main()
+        return True
+    except Exception as e:
+        print(f"Enhanced inference failed: {e}")
+        return False
+
+
+def check_data_quality():
+    """Check data quality and generate report"""
+    from data_handler import StockDataHandler
+    try:
+        handler = StockDataHandler()
+        
+        # Try to load existing data first
+        try:
+            data = handler.load_data()
+            print("Checking quality of existing processed data...")
+        except:
+            print("No existing data found. Preparing new data...")
+            data = handler.prepare_data()
+        
+        # Get quality report
+        quality_report = handler.get_data_quality_report()
+        
+        print("\n" + "="*50)
+        print("DATA QUALITY REPORT")
+        print("="*50)
+        print(f"Status: {quality_report.get('status', 'unknown').upper()}")
+        print(f"Data shape: {quality_report.get('data_shape', 'unknown')}")
+        
+        metrics = quality_report.get('metrics', {})
+        print(f"\nQuality Metrics:")
+        print(f"  Overall Quality Score: {metrics.get('quality_score', 0):.3f}")
+        print(f"  Missing Value Rate: {metrics.get('missing_value_rate', 0):.3f}")
+        print(f"  Outlier Rate: {metrics.get('outlier_rate', 0):.3f}")
+        print(f"  Drift Score: {metrics.get('drift_score', 0):.3f}")
+        print(f"  Data Freshness: {metrics.get('data_freshness_hours', 0):.1f} hours")
+        print(f"  Completeness Score: {metrics.get('completeness_score', 0):.3f}")
+        
+        alerts = quality_report.get('alerts', [])
+        if alerts:
+            print(f"\nData Quality Alerts ({len(alerts)}):")
+            for alert in alerts:
+                print(f"  {alert['level'].upper()}: {alert['message']}")
+        else:
+            print("\nNo data quality alerts.")
+        
+        print("="*50)
+        return True
+        
+    except Exception as e:
+        print(f"Data quality check failed: {e}")
+        return False
+
+
 def main():
     """Main execution pipeline"""
     print_banner()
@@ -118,10 +183,12 @@ def main():
     print("3. Model training only")
     print("4. Model evaluation only") 
     print("5. Visualization only")
-    print("6. Real-time inference")
-    print("7. Quick test (single prediction)")
+    print("6. Real-time inference (basic)")
+    print("7. Enhanced inference (with uncertainty & data quality)")
+    print("8. Data quality check")
+    print("9. Quick test (single prediction)")
     
-    choice = input("\nEnter your choice (1-7): ").strip()
+    choice = input("\nEnter your choice (1-9): ").strip()
     
     if choice == "1":
         steps = [prepare_data, train_model, evaluate_model, visualize_results]
@@ -143,6 +210,10 @@ def main():
     elif choice == "6":
         run_inference()
     elif choice == "7":
+        run_enhanced_inference()
+    elif choice == "8":
+        check_data_quality()
+    elif choice == "9":
         # Quick test
         model_path = os.path.join(config.MODEL_SAVE_PATH, "best_model.pth")
         if os.path.exists(model_path):
