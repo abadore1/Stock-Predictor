@@ -16,6 +16,9 @@ An AI stock prediction system using Transformer architecture with Grouped-Query 
 - **可視化ダッシュボード**: 詳細な結果分析とチャート
 - **📱 Webアプリ**: Streamlitベースの使いやすいUI
 - **🔧 拡張可能**: 設定変更で他の銘柄にも対応
+- **📈 テクニカル指標**: RSI、MACD、ボリンジャーバンド、ストキャスティクス、一目均衡表
+- **📊 高度なチャート**: インタラクティブなテクニカル分析ダッシュボード
+- **🎯 売買シグナル**: 複数指標による総合的なシグナル生成
 
 ## プロジェクト構造 (Project Structure)
 
@@ -28,6 +31,18 @@ Stock prediction/
 ├── run_app.py               # アプリ起動スクリプト
 ├── data_handler.py          # データ取得・前処理
 ├── dataset.py               # PyTorchデータセット
+├── model.py                 # GQA Transformerモデル
+├── train.py                 # モデル学習
+├── evaluate.py              # モデル評価・バックテスト
+├── inference.py             # リアルタイム推論
+├── visualize.py             # 結果可視化
+├── technical_indicators.py  # 📈 テクニカル指標計算
+├── TECHNICAL_INDICATORS.md  # テクニカル指標ドキュメント
+├── data/                    # 処理済みデータ
+├── models/                  # 学習済みモデル
+├── checkpoints/             # 学習チェックポイント
+└── results/                 # 結果・ログ
+```
 ├── model.py                 # GQA Transformerモデル
 ├── train.py                 # モデル学習
 ├── evaluate.py              # モデル評価・バックテスト
@@ -160,6 +175,77 @@ SEQUENCE_LENGTH = 48      # 入力系列長
 MODEL_DIM = 128          # モデル次元
 NUM_HEADS = 8            # 注意ヘッド数
 ```
+
+## テクニカル指標 (Technical Indicators)
+
+### 実装済み指標
+
+#### RSI (相対力指数)
+- **期間**: 14
+- **売買判定**: 30以下で買い、70以上で売り
+- **用途**: 買われすぎ・売られすぎ判定
+
+#### MACD (移動平均収束拡散法)
+- **パラメータ**: 高速EMA(12)、低速EMA(26)、シグナル(9)
+- **売買判定**: MACDラインとシグナルラインのクロス
+- **用途**: トレンド転換点の検出
+
+#### ボリンジャーバンド
+- **期間**: 20日移動平均
+- **標準偏差**: 2.0
+- **用途**: 価格のレンジ分析、反転ポイント検出
+
+#### ストキャスティクス
+- **パラメータ**: %K(14)、%D(3)
+- **売買判定**: 20以下で買い、80以上で売り
+- **用途**: オシレーター系の過熱感判定
+
+#### 一目均衡表
+- **パラメータ**: 転換線(9)、基準線(26)、先行スパンB(52)
+- **売買判定**: 価格と雲の位置関係
+- **用途**: 総合的なトレンド分析
+
+### テクニカル指標の使用方法
+
+#### Streamlitアプリで使用
+```bash
+python run_app.py
+```
+- 「テクニカル指標分析」セクションで各指標を表示/非表示切り替え
+- 個別指標の詳細ビューも選択可能
+- リアルタイムでシグナル状況を確認
+
+#### コマンドラインで使用
+```bash
+python visualize.py
+# オプション7を選択: Technical indicators
+```
+
+#### プログラムで使用
+```python
+from technical_indicators import TechnicalIndicators
+from data_handler import StockDataHandler
+
+# データ取得
+data_handler = StockDataHandler()
+data = data_handler.download_stock_data("7203.T")
+
+# 指標計算
+ti = TechnicalIndicators()
+result = ti.calculate_all_indicators(data)
+signals = ti.generate_signals(result)
+
+# シグナル確認
+summary = ti.get_signal_summary(signals)
+print(summary)  # {'RSI': 'BUY', 'MACD': 'HOLD', ...}
+```
+
+### 複合シグナル
+- **Strong Buy**: 2つ以上の指標が買いシグナル
+- **Strong Sell**: 2つ以上の指標が売りシグナル  
+- **Hold**: 中立またはシグナルが混在
+
+詳細は [TECHNICAL_INDICATORS.md](TECHNICAL_INDICATORS.md) を参照してください。
 
 ## 使用例 (Usage Examples)
 

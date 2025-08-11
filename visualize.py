@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
 import config
+from technical_indicators import TechnicalIndicators
 
 
 # Set style
@@ -29,6 +30,7 @@ class ModelVisualizer:
     """
     def __init__(self):
         self.results_path = config.RESULTS_SAVE_PATH
+        self.technical_indicators = TechnicalIndicators()
         
     def plot_training_history(self, history_file: str = "training_history.json"):
         """
@@ -559,9 +561,10 @@ def main():
     print("4. Trading signals")
     print("5. Live predictions")
     print("6. Market analysis")
-    print("7. Complete dashboard (all plots)")
+    print("7. Technical indicators")
+    print("8. Complete dashboard (all plots)")
     
-    choice = input("Select option (1-7): ").strip()
+    choice = input("Select option (1-8): ").strip()
     
     if choice == "1":
         visualizer.plot_training_history()
@@ -576,12 +579,424 @@ def main():
     elif choice == "6":
         visualizer.create_market_analysis()
     elif choice == "7":
+        # Technical indicators visualization
+        try:
+            from data_handler import StockDataHandler
+            data_handler = StockDataHandler()
+            data = data_handler.download_stock_data(config.TARGET_SYMBOL)
+            if not data.empty:
+                fig = visualizer.plot_technical_indicators(data)
+                fig.show()
+                
+                # Also show signal summary
+                signals = visualizer.create_technical_signals_summary(data)
+                print("\nCurrent Technical Signals:")
+                for indicator, signal in signals.items():
+                    print(f"  {indicator}: {signal}")
+            else:
+                print("No data available for technical analysis")
+        except Exception as e:
+            print(f"Error displaying technical indicators: {e}")
+    elif choice == "8":
         visualizer.create_dashboard()
     else:
         print("Invalid choice")
         return
     
     print("Visualization completed!")
+
+
+    
+    def plot_technical_indicators(self, data: pd.DataFrame, symbol: str = None) -> go.Figure:
+        """
+        Create comprehensive technical indicators chart
+        
+        Args:
+            data: DataFrame with OHLCV data
+            symbol: Stock symbol for title
+            
+        Returns:
+            Plotly figure with technical indicators
+        """
+        if symbol is None:
+            symbol = config.TARGET_SYMBOL
+        
+        # Calculate technical indicators
+        df_with_indicators = self.technical_indicators.calculate_all_indicators(data)
+        df_with_signals = self.technical_indicators.generate_signals(df_with_indicators)
+        
+        # Create subplots
+        fig = make_subplots(
+            rows=5, cols=1,
+            subplot_titles=(
+                f'{symbol} - Price with Bollinger Bands & Ichimoku Cloud',
+                'RSI (Relative Strength Index)',
+                'MACD (Moving Average Convergence Divergence)',
+                'Stochastic Oscillator',
+                'Volume'
+            ),
+            vertical_spacing=0.05,
+            row_heights=[0.4, 0.15, 0.15, 0.15, 0.15],
+            specs=[[{"secondary_y": False}],
+                   [{"secondary_y": False}],
+                   [{"secondary_y": False}],
+                   [{"secondary_y": False}],
+                   [{"secondary_y": False}]]
+        )
+        
+        # Price chart with Bollinger Bands and Ichimoku Cloud
+        # Candlestick chart
+        fig.add_trace(
+            go.Candlestick(
+                x=df_with_indicators.index,
+                open=df_with_indicators['Open'],
+                high=df_with_indicators['High'],
+                low=df_with_indicators['Low'],
+                close=df_with_indicators['Close'],
+                name='Price',
+                increasing_line_color='green',
+                decreasing_line_color='red'
+            ),
+            row=1, col=1
+        )
+        
+        # Bollinger Bands
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['bb_upper'],
+                mode='lines',
+                name='BB Upper',
+                line=dict(color='blue', width=1),
+                opacity=0.7
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['bb_middle'],
+                mode='lines',
+                name='BB Middle (SMA20)',
+                line=dict(color='orange', width=1)
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['bb_lower'],
+                mode='lines',
+                name='BB Lower',
+                line=dict(color='blue', width=1),
+                fill='tonexty',
+                fillcolor='rgba(0, 100, 255, 0.1)',
+                opacity=0.7
+            ),
+            row=1, col=1
+        )
+        
+        # Ichimoku Cloud
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['ichimoku_tenkan'],
+                mode='lines',
+                name='Tenkan-sen',
+                line=dict(color='red', width=1)
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['ichimoku_kijun'],
+                mode='lines',
+                name='Kijun-sen',
+                line=dict(color='blue', width=1)
+            ),
+            row=1, col=1
+        )
+        
+        # Ichimoku Cloud (Senkou Spans)
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['ichimoku_senkou_a'],
+                mode='lines',
+                name='Senkou Span A',
+                line=dict(color='green', width=1),
+                opacity=0.5
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['ichimoku_senkou_b'],
+                mode='lines',
+                name='Senkou Span B',
+                line=dict(color='red', width=1),
+                fill='tonexty',
+                fillcolor='rgba(0, 255, 0, 0.1)',
+                opacity=0.5
+            ),
+            row=1, col=1
+        )
+        
+        # RSI
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['rsi'],
+                mode='lines',
+                name='RSI',
+                line=dict(color='purple', width=2)
+            ),
+            row=2, col=1
+        )
+        
+        # RSI overbought/oversold lines
+        fig.add_hline(y=70, line_dash="dash", line_color="red", 
+                     annotation_text="Overbought (70)", row=2, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="green", 
+                     annotation_text="Oversold (30)", row=2, col=1)
+        fig.add_hline(y=50, line_dash="dot", line_color="gray", 
+                     annotation_text="Midline (50)", row=2, col=1)
+        
+        # MACD
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['macd'],
+                mode='lines',
+                name='MACD',
+                line=dict(color='blue', width=2)
+            ),
+            row=3, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['macd_signal'],
+                mode='lines',
+                name='MACD Signal',
+                line=dict(color='red', width=2)
+            ),
+            row=3, col=1
+        )
+        
+        fig.add_trace(
+            go.Bar(
+                x=df_with_indicators.index,
+                y=df_with_indicators['macd_histogram'],
+                name='MACD Histogram',
+                marker_color='gray',
+                opacity=0.6
+            ),
+            row=3, col=1
+        )
+        
+        # Stochastic Oscillator
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['stoch_k'],
+                mode='lines',
+                name='%K',
+                line=dict(color='blue', width=2)
+            ),
+            row=4, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df_with_indicators.index,
+                y=df_with_indicators['stoch_d'],
+                mode='lines',
+                name='%D',
+                line=dict(color='red', width=2)
+            ),
+            row=4, col=1
+        )
+        
+        # Stochastic overbought/oversold lines
+        fig.add_hline(y=80, line_dash="dash", line_color="red", 
+                     annotation_text="Overbought (80)", row=4, col=1)
+        fig.add_hline(y=20, line_dash="dash", line_color="green", 
+                     annotation_text="Oversold (20)", row=4, col=1)
+        
+        # Volume
+        fig.add_trace(
+            go.Bar(
+                x=df_with_indicators.index,
+                y=df_with_indicators['Volume'],
+                name='Volume',
+                marker_color='lightblue',
+                opacity=0.7
+            ),
+            row=5, col=1
+        )
+        
+        # Add buy/sell signals as markers
+        buy_signals = df_with_signals[df_with_signals['combined_signal'] == 1]
+        sell_signals = df_with_signals[df_with_signals['combined_signal'] == -1]
+        
+        if not buy_signals.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=buy_signals.index,
+                    y=buy_signals['Close'],
+                    mode='markers',
+                    name='Buy Signal',
+                    marker=dict(symbol='triangle-up', color='green', size=12),
+                    showlegend=True
+                ),
+                row=1, col=1
+            )
+        
+        if not sell_signals.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=sell_signals.index,
+                    y=sell_signals['Close'],
+                    mode='markers',
+                    name='Sell Signal',
+                    marker=dict(symbol='triangle-down', color='red', size=12),
+                    showlegend=True
+                ),
+                row=1, col=1
+            )
+        
+        # Update layout
+        fig.update_layout(
+            title=f"{symbol} - Technical Analysis Dashboard",
+            height=1200,
+            showlegend=True,
+            xaxis_rangeslider_visible=False
+        )
+        
+        # Update y-axis labels
+        fig.update_yaxes(title_text="Price (¥)", row=1, col=1)
+        fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
+        fig.update_yaxes(title_text="MACD", row=3, col=1)
+        fig.update_yaxes(title_text="Stochastic", row=4, col=1, range=[0, 100])
+        fig.update_yaxes(title_text="Volume", row=5, col=1)
+        fig.update_xaxes(title_text="Date", row=5, col=1)
+        
+        return fig
+    
+    def create_technical_signals_summary(self, data: pd.DataFrame) -> Dict[str, str]:
+        """
+        Create technical signals summary
+        
+        Args:
+            data: DataFrame with OHLCV data
+            
+        Returns:
+            Dictionary with signal summaries
+        """
+        df_with_indicators = self.technical_indicators.calculate_all_indicators(data)
+        df_with_signals = self.technical_indicators.generate_signals(df_with_indicators)
+        
+        return self.technical_indicators.get_signal_summary(df_with_signals)
+    
+    def plot_individual_indicator(self, data: pd.DataFrame, indicator: str, symbol: str = None) -> go.Figure:
+        """
+        Plot individual technical indicator
+        
+        Args:
+            data: DataFrame with OHLCV data
+            indicator: Indicator name ('rsi', 'macd', 'bollinger', 'stochastic', 'ichimoku')
+            symbol: Stock symbol for title
+            
+        Returns:
+            Plotly figure with specific indicator
+        """
+        if symbol is None:
+            symbol = config.TARGET_SYMBOL
+            
+        df_with_indicators = self.technical_indicators.calculate_all_indicators(data)
+        
+        if indicator.lower() == 'rsi':
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=df_with_indicators.index,
+                    y=df_with_indicators['rsi'],
+                    mode='lines',
+                    name='RSI',
+                    line=dict(color='purple', width=2)
+                )
+            )
+            fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+            fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+            fig.add_hline(y=50, line_dash="dot", line_color="gray", annotation_text="Midline (50)")
+            fig.update_layout(title=f"{symbol} - RSI (Relative Strength Index)", yaxis_range=[0, 100])
+            
+        elif indicator.lower() == 'macd':
+            fig = make_subplots(rows=2, cols=1, subplot_titles=('MACD Line & Signal', 'MACD Histogram'),
+                               vertical_spacing=0.1, row_heights=[0.7, 0.3])
+            
+            fig.add_trace(
+                go.Scatter(x=df_with_indicators.index, y=df_with_indicators['macd'],
+                          mode='lines', name='MACD', line=dict(color='blue', width=2)),
+                row=1, col=1
+            )
+            fig.add_trace(
+                go.Scatter(x=df_with_indicators.index, y=df_with_indicators['macd_signal'],
+                          mode='lines', name='Signal', line=dict(color='red', width=2)),
+                row=1, col=1
+            )
+            fig.add_trace(
+                go.Bar(x=df_with_indicators.index, y=df_with_indicators['macd_histogram'],
+                      name='Histogram', marker_color='gray', opacity=0.6),
+                row=2, col=1
+            )
+            fig.update_layout(title=f"{symbol} - MACD (Moving Average Convergence Divergence)")
+            
+        elif indicator.lower() == 'bollinger':
+            fig = go.Figure()
+            
+            # Price candlesticks
+            fig.add_trace(
+                go.Candlestick(
+                    x=df_with_indicators.index,
+                    open=df_with_indicators['Open'],
+                    high=df_with_indicators['High'],
+                    low=df_with_indicators['Low'],
+                    close=df_with_indicators['Close'],
+                    name='Price'
+                )
+            )
+            
+            # Bollinger Bands
+            fig.add_trace(
+                go.Scatter(x=df_with_indicators.index, y=df_with_indicators['bb_upper'],
+                          mode='lines', name='Upper Band', line=dict(color='blue', width=1))
+            )
+            fig.add_trace(
+                go.Scatter(x=df_with_indicators.index, y=df_with_indicators['bb_middle'],
+                          mode='lines', name='Middle Band (SMA)', line=dict(color='orange', width=1))
+            )
+            fig.add_trace(
+                go.Scatter(x=df_with_indicators.index, y=df_with_indicators['bb_lower'],
+                          mode='lines', name='Lower Band', line=dict(color='blue', width=1),
+                          fill='tonexty', fillcolor='rgba(0, 100, 255, 0.1)')
+            )
+            fig.update_layout(title=f"{symbol} - Bollinger Bands")
+            
+        else:
+            # Default: return empty figure
+            fig = go.Figure()
+            fig.update_layout(title=f"Indicator '{indicator}' not implemented yet")
+        
+        return fig
 
 
 if __name__ == "__main__":
